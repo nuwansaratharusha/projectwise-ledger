@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
-import { useClients, useProjects, useTransactions } from "@/hooks/use-data";
+import { useMemo, useState, useEffect } from "react";
+import { useClients, useProjects, useTransactions, useProfile } from "@/hooks/use-data";
 import { useDeleteClient } from "@/hooks/use-mutations";
 import { PageHeader, EmptyState, ErrorState, LoadingRows } from "@/components/common";
 import { ClientFormDialog } from "@/components/client-form";
@@ -20,6 +20,15 @@ import { formatCurrency } from "@/lib/format";
 import { Plus, Trash, Sparkle } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import type { Client } from "@/lib/types";
+import { convertCurrency } from "@/lib/currency";
+import { CURRENCIES } from "@/lib/types";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export const Route = createFileRoute("/_app/clients")({
   component: ClientsPage,
@@ -35,6 +44,15 @@ function ClientsPage() {
   const deleteClient = useDeleteClient();
   const navigate = Route.useNavigate();
   const { detail: detailId } = Route.useSearch();
+  const { data: profile } = useProfile();
+
+  const [selectedCurrency, setSelectedCurrency] = useState("USD");
+
+  useEffect(() => {
+    if (profile?.default_currency) {
+      setSelectedCurrency(profile.default_currency);
+    }
+  }, [profile?.default_currency]);
 
   const [search, setSearch] = useState("");
   const [formOpen, setFormOpen] = useState(false);
@@ -52,8 +70,9 @@ function ClientsPage() {
       let totalReceived = 0;
       for (const p of clientProjects) {
         const fin = computeFinancials(p, transactions);
-        totalAgreed += fin.agreedValue;
-        totalReceived += fin.totalReceived;
+        const pCurrency = p.currency || "USD";
+        totalAgreed += convertCurrency(fin.agreedValue, pCurrency, selectedCurrency);
+        totalReceived += convertCurrency(fin.totalReceived, pCurrency, selectedCurrency);
       }
       return {
         client: c,
@@ -64,7 +83,7 @@ function ClientsPage() {
         outstanding: Math.max(totalAgreed - totalReceived, 0),
       };
     });
-  }, [clients, projects, transactions]);
+  }, [clients, projects, transactions, selectedCurrency]);
 
   const filtered = useMemo(() => {
     if (!search) return enriched;
@@ -128,12 +147,27 @@ function ClientsPage() {
         title="Clients"
         description={`${(clients ?? []).length} clients`}
         actions={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1.5 mr-2">
+              <span className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">View Currency:</span>
+              <Select value={selectedCurrency} onValueChange={setSelectedCurrency}>
+                <SelectTrigger className="h-7 w-[85px] text-xs font-semibold">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {CURRENCIES.map((c) => (
+                    <SelectItem key={c} value={c} className="text-xs font-medium">
+                      {c}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             {duplicateClientsCount > 0 && (
               <Button
                 size="sm"
                 variant="outline"
-                className="text-destructive hover:bg-destructive/10 border-destructive/20 gap-1.5"
+                className="h-7 text-xs text-destructive hover:bg-destructive/10 border-destructive/20 gap-1.5"
                 disabled={cleaning}
                 onClick={handleCleanDuplicates}
               >
@@ -141,7 +175,7 @@ function ClientsPage() {
                 Clean Duplicates ({duplicateClientsCount})
               </Button>
             )}
-            <Button size="sm" onClick={() => setFormOpen(true)}>
+            <Button size="sm" className="h-7 text-xs" onClick={() => setFormOpen(true)}>
               <Plus className="mr-1.5 h-3.5 w-3.5" />
               New client
             </Button>
@@ -205,14 +239,14 @@ function ClientsPage() {
                     {e.completed}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {formatCurrency(e.totalAgreed)}
+                    {formatCurrency(e.totalAgreed, selectedCurrency)}
                   </TableCell>
                   <TableCell className="text-right tabular-nums text-success">
-                    {formatCurrency(e.totalReceived)}
+                    {formatCurrency(e.totalReceived, selectedCurrency)}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
                     <span className={e.outstanding > 0 ? "text-warning" : ""}>
-                      {formatCurrency(e.outstanding)}
+                      {formatCurrency(e.outstanding, selectedCurrency)}
                     </span>
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">

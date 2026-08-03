@@ -12,12 +12,13 @@ import {
   ProjectStatusBadge,
   TransactionStatusBadge,
 } from "@/components/status-badges";
-import { useProjects, useTransactions } from "@/hooks/use-data";
+import { useProjects, useTransactions, useProfile } from "@/hooks/use-data";
 import { computeFinancials, isTransactionOverdue } from "@/lib/finance";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { PencilSimple, EnvelopeSimple, Phone, Globe, MapPin, Trash } from "@phosphor-icons/react";
 import { useDeleteClient } from "@/hooks/use-mutations";
 import type { Client } from "@/lib/types";
+import { convertCurrency } from "@/lib/currency";
 
 export function ClientDetailDrawer({
   client,
@@ -33,6 +34,8 @@ export function ClientDetailDrawer({
   const { data: projects = [] } = useProjects();
   const { data: transactions = [] } = useTransactions();
   const deleteClient = useDeleteClient();
+  const { data: profile } = useProfile();
+  const defaultCurrency = profile?.default_currency ?? "USD";
 
   const clientProjects = useMemo(
     () =>
@@ -54,11 +57,12 @@ export function ClientDetailDrawer({
     let totalReceived = 0;
     for (const p of clientProjects) {
       const fin = computeFinancials(p, transactions);
-      totalAgreed += fin.agreedValue;
-      totalReceived += fin.totalReceived;
+      const pCurrency = p.currency || "USD";
+      totalAgreed += convertCurrency(fin.agreedValue, pCurrency, defaultCurrency);
+      totalReceived += convertCurrency(fin.totalReceived, pCurrency, defaultCurrency);
     }
     return { totalAgreed, totalReceived, outstanding: Math.max(totalAgreed - totalReceived, 0) };
-  }, [clientProjects, transactions]);
+  }, [clientProjects, transactions, defaultCurrency]);
 
   const clientTransactions = useMemo(
     () =>
@@ -168,13 +172,13 @@ export function ClientDetailDrawer({
             <div className="rounded-lg border border-border p-3">
               <p className="text-xs text-muted-foreground">Total Agreed</p>
               <p className="mt-1 text-lg font-semibold tabular-nums">
-                {formatCurrency(financials.totalAgreed)}
+                {formatCurrency(financials.totalAgreed, defaultCurrency)}
               </p>
             </div>
             <div className="rounded-lg border border-border p-3">
               <p className="text-xs text-muted-foreground">Received</p>
               <p className="mt-1 text-lg font-semibold tabular-nums text-success">
-                {formatCurrency(financials.totalReceived)}
+                {formatCurrency(financials.totalReceived, defaultCurrency)}
               </p>
             </div>
             <div className="rounded-lg border border-border p-3">
@@ -182,7 +186,7 @@ export function ClientDetailDrawer({
               <p
                 className={`mt-1 text-lg font-semibold tabular-nums ${financials.outstanding > 0 ? "text-warning" : ""}`}
               >
-                {formatCurrency(financials.outstanding)}
+                {formatCurrency(financials.outstanding, defaultCurrency)}
               </p>
             </div>
           </div>
