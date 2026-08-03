@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import {
   useProjects,
   useClients,
@@ -8,6 +8,14 @@ import {
   useActivity,
   useProfile,
 } from "@/hooks/use-data";
+import { CURRENCIES } from "@/lib/types";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { PageHeader, MetricCard, EmptyState, ErrorState, LoadingRows } from "@/components/common";
 import {
   ProjectStatusBadge,
@@ -39,14 +47,22 @@ function DashboardPage() {
   const { data: milestones = [] } = useMilestones();
   const { data: activity = [] } = useActivity(undefined, 10);
   const { data: profile } = useProfile();
-  const dc = profile?.default_currency ?? "USD";
+  const defaultCurrency = profile?.default_currency ?? "USD";
+
+  const [selectedCurrency, setSelectedCurrency] = useState("USD");
+
+  useEffect(() => {
+    if (profile?.default_currency) {
+      setSelectedCurrency(profile.default_currency);
+    }
+  }, [profile?.default_currency]);
 
   const loading = loadingP || loadingT;
   const error = errorP || errorT;
 
   const totals = useMemo(
-    () => computeDashboardTotals(projects ?? [], transactions ?? []),
-    [projects, transactions],
+    () => computeDashboardTotals(projects ?? [], transactions ?? [], selectedCurrency),
+    [projects, transactions, selectedCurrency],
   );
 
   const attention = useMemo(
@@ -118,7 +134,27 @@ function DashboardPage() {
 
   return (
     <div className="space-y-5">
-      <PageHeader title="Dashboard" description="Overview of your projects and finances." />
+      <PageHeader 
+        title="Dashboard" 
+        description="Overview of your projects and finances." 
+        actions={
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">View Currency:</span>
+            <Select value={selectedCurrency} onValueChange={setSelectedCurrency}>
+              <SelectTrigger className="h-7 w-[85px] text-xs font-semibold">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {CURRENCIES.map((c) => (
+                  <SelectItem key={c} value={c} className="text-xs font-medium">
+                    {c}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        }
+      />
 
       {loading ? (
         <LoadingRows rows={6} />
@@ -136,12 +172,12 @@ function DashboardPage() {
           <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             <MetricCard
               label="Outstanding Receivables"
-              value={formatCurrency(totals.outstandingReceivables, dc)}
+              value={formatCurrency(totals.outstandingReceivables, selectedCurrency)}
               tone={totals.outstandingReceivables > 0 ? "warning" : "default"}
             />
             <MetricCard
               label="Collected This Month"
-              value={formatCurrency(totals.collectedThisMonth, dc)}
+              value={formatCurrency(totals.collectedThisMonth, selectedCurrency)}
               tone="success"
             />
             <MetricCard
@@ -159,7 +195,7 @@ function DashboardPage() {
             />
             <MetricCard
               label="Investment Spent"
-              value={formatCurrency(totals.investmentSpent, dc)}
+              value={formatCurrency(totals.investmentSpent, selectedCurrency)}
             />
           </div>
 

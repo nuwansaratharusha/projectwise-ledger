@@ -1,5 +1,6 @@
 import type { Milestone, Project, Transaction } from "./types";
 import { currentMonthKey, isPast, monthKey } from "./format";
+import { convertCurrency } from "./currency";
 
 export type PaymentStatus =
   | "not_applicable"
@@ -137,6 +138,7 @@ export interface DashboardTotals {
 export function computeDashboardTotals(
   projects: Project[],
   transactions: Transaction[],
+  targetCurrency: string = "USD",
 ): DashboardTotals {
   let outstandingReceivables = 0;
   let investmentSpent = 0;
@@ -144,10 +146,14 @@ export function computeDashboardTotals(
 
   for (const project of projects) {
     const fin = computeFinancials(project, transactions);
+    const pCurrency = project.currency || "USD";
     if (fin.isClient && project.status !== "archived") {
-      outstandingReceivables += Math.max(fin.balanceDue, fin.expectedIncome);
+      const outstandingOriginal = Math.max(fin.balanceDue, fin.expectedIncome);
+      outstandingReceivables += convertCurrency(outstandingOriginal, pCurrency, targetCurrency);
     }
-    if (!fin.isClient) investmentSpent += fin.totalSpent;
+    if (!fin.isClient) {
+      investmentSpent += convertCurrency(fin.totalSpent, pCurrency, targetCurrency);
+    }
     if (isProjectOverdue(project)) overdueItems += 1;
   }
 
@@ -166,7 +172,7 @@ export function computeDashboardTotals(
         t.status === "completed" &&
         monthKey(t.transaction_date) === thisMonth,
     )
-    .reduce((s, t) => s + num(t.amount), 0);
+    .reduce((s, t) => s + convertCurrency(num(t.amount), t.currency || "USD", targetCurrency), 0);
 
   return {
     outstandingReceivables,

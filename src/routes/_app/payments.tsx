@@ -1,11 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import {
   useTransactions,
   useProjects,
   useClients,
   useProfile,
 } from "@/hooks/use-data";
+import { convertCurrency } from "@/lib/currency";
+import { CURRENCIES } from "@/lib/types";
 import { PageHeader, MetricCard, EmptyState, ErrorState, LoadingRows } from "@/components/common";
 import { TransactionStatusBadge } from "@/components/status-badges";
 import { TransactionFormDialog } from "@/components/transaction-form";
@@ -45,7 +47,15 @@ function PaymentsPage() {
   const { data: projects = [] } = useProjects();
   const { data: clients = [] } = useClients();
   const { data: profile } = useProfile();
-  const dc = profile?.default_currency ?? "USD";
+  const defaultCurrency = profile?.default_currency ?? "USD";
+
+  const [selectedCurrency, setSelectedCurrency] = useState("USD");
+
+  useEffect(() => {
+    if (profile?.default_currency) {
+      setSelectedCurrency(profile.default_currency);
+    }
+  }, [profile?.default_currency]);
 
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
@@ -84,19 +94,20 @@ function PaymentsPage() {
     let receivedThisMonth = 0;
     let overdueCount = 0;
     for (const t of payments) {
+      const convertedAmount = convertCurrency(t.amount, t.currency || "USD", selectedCurrency);
       if (t.status === "expected") {
-        outstanding += t.amount;
+        outstanding += convertedAmount;
         if (isTransactionOverdue(t)) overdueCount++;
       }
       if (
         t.status === "completed" &&
         monthKey(t.transaction_date) === nowMonth
       ) {
-        receivedThisMonth += t.amount;
+        receivedThisMonth += convertedAmount;
       }
     }
     return { outstanding, receivedThisMonth, overdueCount, total: payments.length };
-  }, [payments]);
+  }, [payments, selectedCurrency]);
 
   const filtered = useMemo(() => {
     let list = payments;
@@ -155,17 +166,33 @@ function PaymentsPage() {
         title="Payments"
         description="Track income from client projects."
         actions={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1.5 mr-2">
+              <span className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">View Currency:</span>
+              <Select value={selectedCurrency} onValueChange={setSelectedCurrency}>
+                <SelectTrigger className="h-7 w-[85px] text-xs font-semibold">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {CURRENCIES.map((c) => (
+                    <SelectItem key={c} value={c} className="text-xs font-medium">
+                      {c}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <Button
               size="sm"
               variant="outline"
+              className="h-7 text-xs"
               onClick={exportCsv}
               disabled={filtered.length === 0}
             >
               <DownloadSimple className="mr-1.5 h-3.5 w-3.5" weight="duotone" />
               CSV
             </Button>
-            <Button size="sm" onClick={() => setFormOpen(true)}>
+            <Button size="sm" className="h-7 text-xs" onClick={() => setFormOpen(true)}>
               <Plus className="mr-1.5 h-3.5 w-3.5" />
               Record payment
             </Button>
@@ -177,12 +204,12 @@ function PaymentsPage() {
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard
           label="Outstanding"
-          value={formatCurrency(metrics.outstanding, dc)}
+          value={formatCurrency(metrics.outstanding, selectedCurrency)}
           tone={metrics.outstanding > 0 ? "warning" : "default"}
         />
         <MetricCard
           label="Received This Month"
-          value={formatCurrency(metrics.receivedThisMonth, dc)}
+          value={formatCurrency(metrics.receivedThisMonth, selectedCurrency)}
           tone="success"
         />
         <MetricCard
@@ -292,7 +319,12 @@ function PaymentsPage() {
                       {t.category}
                     </TableCell>
                     <TableCell className="text-right text-sm font-medium tabular-nums text-success">
-                      +{formatCurrency(t.amount, t.currency)}
+                      <div>+{formatCurrency(t.amount, t.currency)}</div>
+                      {t.currency !== selectedCurrency && (
+                        <div className="text-[11px] text-muted-foreground font-normal">
+                          ({formatCurrency(convertCurrency(t.amount, t.currency, selectedCurrency), selectedCurrency)})
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell>
                       <TransactionStatusBadge
