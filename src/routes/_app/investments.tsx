@@ -1,0 +1,199 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { useMemo } from "react";
+import { useProjects, useTransactions, useMilestones, useProfile } from "@/hooks/use-data";
+import { PageHeader, MetricCard, EmptyState, ErrorState, LoadingRows, ProgressBar } from "@/components/common";
+import { ProjectStatusBadge, PriorityBadge } from "@/components/status-badges";
+import { computeFinancials, computeProgress } from "@/lib/finance";
+import { formatCurrency, formatDate, relativeDayLabel } from "@/lib/format";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { WarningCircle } from "@phosphor-icons/react";
+
+export const Route = createFileRoute("/_app/investments")({
+  component: InvestmentsPage,
+});
+
+function InvestmentsPage() {
+  const { data: projects, isLoading, error, refetch } = useProjects();
+  const { data: transactions = [] } = useTransactions();
+  const { data: milestones = [] } = useMilestones();
+  const { data: profile } = useProfile();
+  const dc = profile?.default_currency ?? "USD";
+
+  const investmentProjects = useMemo(
+    () => (projects ?? []).filter((p) => p.project_type === "investment"),
+    [projects],
+  );
+
+  const enriched = useMemo(
+    () =>
+      investmentProjects.map((p) => {
+        const fin = computeFinancials(p, transactions);
+        const pMilestones = milestones.filter((m) => m.project_id === p.id);
+        const progress = computeProgress(pMilestones);
+        return { project: p, fin, progress };
+      }),
+    [investmentProjects, transactions, milestones],
+  );
+
+  const metrics = useMemo(() => {
+    let totalBudgets = 0;
+    let totalSpent = 0;
+    let overBudgetCount = 0;
+    for (const e of enriched) {
+      totalBudgets += e.fin.investmentBudget;
+      totalSpent += e.fin.totalSpent;
+      if (e.fin.overBudget) overBudgetCount++;
+    }
+    return {
+      totalBudgets,
+      totalSpent,
+      remaining: totalBudgets - totalSpent,
+      overBudgetCount,
+      count: enriched.length,
+    };
+  }, [enriched]);
+
+  if (error)
+    return (
+      <ErrorState
+        message="Failed to load investment data."
+        onRetry={() => refetch()}
+      />
+    );
+
+  return (
+    <div className="space-y-4">
+      <PageHeader
+        title="Investments"
+        description="Track internal projects, products, and initiatives."
+      />
+
+      {isLoading ? (
+        <LoadingRows rows={6} />
+      ) : enriched.length === 0 ? (
+        <EmptyState
+          title="No investment projects"
+          description="Create an investment project to track internal spending."
+        />
+      ) : (
+        <>
+          {/* Metrics */}
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <MetricCard
+              label="Total Budgets"
+              value={formatCurrency(metrics.totalBudgets, dc)}
+            />
+            <MetricCard
+              label="Total Spent"
+              value={formatCurrency(metrics.totalSpent, dc)}
+            />
+            <MetricCard
+              label="Remaining"
+              value={formatCurrency(metrics.remaining, dc)}
+              tone={metrics.remaining < 0 ? "danger" : "success"}
+            />
+            <MetricCard
+              label="Over Budget"
+              value={metrics.overBudgetCount}
+              tone={metrics.overBudgetCount > 0 ? "danger" : "default"}
+            />
+          </div>
+
+          {/* Table */}
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="min-w-[180px]">Project</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Priority</TableHead>
+                  <TableHead>Progress</TableHead>
+                  <TableHead className="text-right">Budget</TableHead>
+                  <TableHead className="text-right">Spent</TableHead>
+                  <TableHead className="text-right">Remaining</TableHead>
+                  <TableHead className="text-right">Usage</TableHead>
+                  <TableHead>Target</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {enriched.map((e) => (
+                  <TableRow
+                    key={e.project.id}
+                    className={e.fin.overBudget ? "bg-destructive/5" : ""}
+                  >
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{e.project.name}</span>
+                        {e.fin.overBudget && (
+                          <WarningCircle className="h-3.5 w-3.5 text-destructive shrink-0" weight="duotone" />
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <ProjectStatusBadge status={e.project.status} />
+                    </TableCell>
+                    <TableCell>
+                      <PriorityBadge priority={e.project.priority} />
+                    </TableCell>
+                    <TableCell>
+                      <ProgressBar value={e.progress} />
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {formatCurrency(e.fin.investmentBudget, e.fin.currency)}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {formatCurrency(e.fin.totalSpent, e.fin.currency)}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      <span
+                        className={
+                          e.fin.remainingBudget < 0
+                            ? "text-destructive"
+                            : "text-success"
+                        }
+                      >
+                        {formatCurrency(e.fin.remainingBudget, e.fin.currency)}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <div className="h-1.5 w-16 overflow-hidden rounded-full bg-muted">
+                          <div
+                            className={`h-full rounded-full transition-all ${e.fin.overBudget ? "bg-destructive" : "bg-primary"}`}
+                            style={{
+                              width: `${Math.min(100, e.fin.budgetUsage)}%`,
+                            }}
+                          />
+                        </div>
+                        <span className="text-xs tabular-nums text-muted-foreground">
+                          {Math.round(e.fin.budgetUsage)}%
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-sm">
+                        {formatDate(e.project.target_date)}
+                        {relativeDayLabel(e.project.target_date) && (
+                          <p className="text-xs text-muted-foreground">
+                            {relativeDayLabel(e.project.target_date)}
+                          </p>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
