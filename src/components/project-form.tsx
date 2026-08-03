@@ -61,7 +61,7 @@ const emptyValues = (currency: string): FormValues => ({
   description: "",
   project_type: "client",
   work_mode: "one_time",
-  status: "planned",
+  status: "active",
   priority: "medium",
   client_id: "none",
   currency,

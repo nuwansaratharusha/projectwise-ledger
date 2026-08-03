@@ -39,6 +39,7 @@ export function MoneyTab({
   const [editTx, setEditTx] = useState<Transaction | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [defaultType, setDefaultType] = useState<"income" | "expense">("income");
+  const [defaultStatus, setDefaultStatus] = useState<Transaction["status"]>("completed");
 
   const transactions = useMemo(
     () =>
@@ -52,8 +53,9 @@ export function MoneyTab({
     [allTransactions, project.id],
   );
 
-  function openForm(type: "income" | "expense") {
+  function openForm(type: "income" | "expense", status: Transaction["status"] = "completed") {
     setDefaultType(type);
+    setDefaultStatus(status);
     setEditTx(null);
     setFormOpen(true);
   }
@@ -114,6 +116,7 @@ export function MoneyTab({
               variant="outline"
               onClick={() => {
                 setDefaultType("income");
+                setDefaultStatus("expected");
                 setEditTx(null);
                 setFormOpen(true);
               }}
@@ -246,6 +249,7 @@ export function MoneyTab({
         transaction={editTx}
         defaultProjectId={project.id}
         defaultType={defaultType}
+        defaultStatus={defaultStatus}
       />
 
       <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>

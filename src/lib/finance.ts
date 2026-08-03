@@ -144,7 +144,9 @@ export function computeDashboardTotals(
 
   for (const project of projects) {
     const fin = computeFinancials(project, transactions);
-    if (fin.isClient && project.status === "active") outstandingReceivables += fin.balanceDue;
+    if (fin.isClient && project.status !== "archived") {
+      outstandingReceivables += Math.max(fin.balanceDue, fin.expectedIncome);
+    }
     if (!fin.isClient) investmentSpent += fin.totalSpent;
     if (isProjectOverdue(project)) overdueItems += 1;
   }

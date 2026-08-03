@@ -37,19 +37,21 @@ export function TransactionFormDialog({
   transaction,
   defaultProjectId,
   defaultType = "income",
+  defaultStatus,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   transaction?: Transaction | null;
   defaultProjectId?: string | null;
   defaultType?: TransactionType;
+  defaultStatus?: TransactionStatus;
 }) {
   const { data: projects = [] } = useProjects();
   const save = useSaveTransaction();
   const [values, setValues] = useState({
     project_id: defaultProjectId ?? "",
     transaction_type: defaultType as TransactionType,
-    status: "completed" as TransactionStatus,
+    status: (defaultStatus ?? "completed") as TransactionStatus,
     amount: "",
     currency: "USD",
     category: "",
@@ -83,7 +85,7 @@ export function TransactionFormDialog({
       setValues({
         project_id: project?.id ?? "",
         transaction_type: defaultType,
-        status: "completed",
+        status: defaultStatus ?? "completed",
         amount: "",
         currency: project?.currency ?? "USD",
         category: defaultType === "income" ? "project_payment" : "software",
@@ -95,7 +97,7 @@ export function TransactionFormDialog({
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, transaction, defaultProjectId, defaultType]);
+  }, [open, transaction, defaultProjectId, defaultType, defaultStatus]);
 
   const isIncome = values.transaction_type === "income";
   const categories = isIncome ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
