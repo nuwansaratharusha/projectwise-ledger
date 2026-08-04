@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import {
   useProjects,
   useClients,
@@ -10,6 +10,8 @@ import {
 import { PageHeader, ErrorState, LoadingRows } from "@/components/common";
 import { computeFinancials } from "@/lib/finance";
 import { formatCurrency, monthKey } from "@/lib/format";
+import { convertCurrency } from "@/lib/currency";
+import { CURRENCIES } from "@/lib/types";
 import { downloadCsv } from "@/lib/csv";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,7 +53,13 @@ function ReportsPage() {
   } = useTransactions();
   const { data: milestones = [] } = useMilestones();
   const { data: profile } = useProfile();
-  const dc = profile?.default_currency ?? "USD";
+  const [selectedCurrency, setSelectedCurrency] = useState("USD");
+
+  useEffect(() => {
+    if (profile?.default_currency) {
+      setSelectedCurrency(profile.default_currency);
+    }
+  }, [profile?.default_currency]);
 
   const loading = loadingP || loadingT;
   const error = errorP || errorT;
@@ -82,25 +90,27 @@ function ReportsPage() {
     for (const t of filteredTransactions) {
       const key = monthKey(t.transaction_date);
       const entry = map.get(key) ?? { income: 0, expenses: 0 };
+      const convertedAmount = convertCurrency(t.amount, t.currency || "USD", selectedCurrency);
       if (t.transaction_type === "income") {
-        entry.income += t.amount;
+        entry.income += convertedAmount;
       } else {
-        entry.expenses += t.amount;
+        entry.expenses += convertedAmount;
       }
       map.set(key, entry);
     }
     return Array.from(map.entries())
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([month, data]) => ({ month, ...data }));
-  }, [filteredTransactions]);
+  }, [filteredTransactions, selectedCurrency]);
 
   // Summary metrics
   const summary = useMemo(() => {
     let totalIncome = 0;
     let totalExpenses = 0;
     for (const t of filteredTransactions) {
-      if (t.transaction_type === "income") totalIncome += t.amount;
-      else totalExpenses += t.amount;
+      const convertedAmount = convertCurrency(t.amount, t.currency || "USD", selectedCurrency);
+      if (t.transaction_type === "income") totalIncome += convertedAmount;
+      else totalExpenses += convertedAmount;
     }
     const completedProjects = (projects ?? []).filter(
       (p) =>
@@ -120,9 +130,10 @@ function ReportsPage() {
       if (t.transaction_type !== "income") continue;
       const clientId = clientProjectIds.get(t.project_id);
       if (clientId) {
+        const convertedAmount = convertCurrency(t.amount, t.currency || "USD", selectedCurrency);
         clientRevenue.set(
           clientId,
-          (clientRevenue.get(clientId) ?? 0) + t.amount,
+          (clientRevenue.get(clientId) ?? 0) + convertedAmount,
         );
       }
     }
@@ -142,7 +153,7 @@ function ReportsPage() {
       completedProjects,
       clientBreakdown,
     };
-  }, [filteredTransactions, projects, clients, fromDate, toDate]);
+  }, [filteredTransactions, projects, clients, fromDate, toDate, selectedCurrency]);
 
   function exportAll(type: "projects" | "clients" | "transactions" | "milestones") {
     if (type === "transactions") {
@@ -197,7 +208,27 @@ function ReportsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Reports" description="Analyze your project finances." />
+      <PageHeader
+        title="Reports"
+        description="Analyze your project finances."
+        actions={
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">View Currency:</span>
+            <Select value={selectedCurrency} onValueChange={setSelectedCurrency}>
+              <SelectTrigger className="h-7 w-[85px] text-xs font-semibold">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {CURRENCIES.map((c) => (
+                  <SelectItem key={c} value={c} className="text-xs font-medium">
+                    {c}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        }
+      />
 
       {/* Date range */}
       <div className="flex flex-wrap items-end gap-3">
@@ -235,16 +266,16 @@ function ReportsPage() {
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <SummaryCard
               label="Total Income"
-              value={formatCurrency(summary.totalIncome, dc)}
+              value={formatCurrency(summary.totalIncome, selectedCurrency)}
               className="text-success"
             />
             <SummaryCard
               label="Total Expenses"
-              value={formatCurrency(summary.totalExpenses, dc)}
+              value={formatCurrency(summary.totalExpenses, selectedCurrency)}
             />
             <SummaryCard
               label="Net"
-              value={formatCurrency(summary.net, dc)}
+              value={formatCurrency(summary.net, selectedCurrency)}
               className={summary.net >= 0 ? "text-success" : "text-destructive"}
             />
             <SummaryCard
@@ -281,7 +312,7 @@ function ReportsPage() {
                       borderRadius: "8px",
                       fontSize: "12px",
                     }}
-                    formatter={(value: number) => formatCurrency(value, dc)}
+                    formatter={(value: number) => formatCurrency(value, selectedCurrency)}
                   />
                   <Legend wrapperStyle={{ fontSize: "12px" }} />
                   <Bar
@@ -321,7 +352,7 @@ function ReportsPage() {
                         />
                       </div>
                       <span className="w-24 text-right text-sm tabular-nums">
-                        {formatCurrency(c.revenue, dc)}
+                        {formatCurrency(c.revenue, selectedCurrency)}
                       </span>
                       <span className="w-12 text-right text-xs text-muted-foreground tabular-nums">
                         {pct.toFixed(0)}%
